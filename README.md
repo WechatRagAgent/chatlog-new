@@ -58,6 +58,11 @@ _聊天记录工具，帮助大家轻松使用自己的聊天数据_
 ```bash
 go install github.com/sjzar/chatlog@latest
 ```
+### Windows构建命令
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ go build -trimpath -ldflags '-X "github.com/sjzar/chatlog/pkg/version.Version=v0.0.16" -w        
+  -s' -o bin/chatlog_windows_amd64.exe main.go
+```
 
 ### 下载预编译版本
 
@@ -152,6 +157,25 @@ GET /api/v1/chatlog?time=2023-01-01&talker=wxid_xxx
 - `limit`: 返回记录数量
 - `offset`: 分页偏移量
 - `format`: 输出格式，支持 `json`、`csv` 或纯文本
+
+### 聊天记录统计
+
+```
+GET /api/v1/chatlog/count?time=2023-01-01&talker=wxid_xxx
+```
+
+参数说明：
+- `time`: 时间范围，格式为 `YYYY-MM-DD` 或 `YYYY-MM-DD~YYYY-MM-DD`（必填）
+- `talker`: 聊天对象标识（支持 wxid、群聊 ID、备注名、昵称等，支持多个值用逗号分隔）（必填）
+
+返回格式：
+```json
+{
+  "count": 1234,
+  "talker": "wxid_xxx",
+  "time": "2023-01-01"
+}
+```
 
 ### 其他 API 接口
 
