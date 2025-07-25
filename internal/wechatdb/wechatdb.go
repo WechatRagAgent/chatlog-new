@@ -124,3 +124,9 @@ func (w *DB) GetSessions(key string, limit, offset int) (*GetSessionsResp, error
 func (w *DB) GetMedia(_type string, key string) (*model.Media, error) {
 	return w.repo.GetMedia(context.Background(), _type, key)
 }
+
+// GetMessagesCount 获取消息数量，用于数据同步
+func (w *DB) GetMessagesCount(start, end time.Time, talker string) (int64, error) {
+	ctx := context.Background()
+	return w.repo.GetMessagesCount(ctx, start, end, talker)
+}

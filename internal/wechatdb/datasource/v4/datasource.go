@@ -359,6 +359,89 @@ func (ds *DataSource) GetMessages(ctx context.Context, startTime, endTime time.T
 	return filteredMessages, nil
 }
 
+// GetMessagesCount 获取消息数量，用于数据同步
+func (ds *DataSource) GetMessagesCount(ctx context.Context, startTime, endTime time.Time, talker string) (int64, error) {
+	if talker == "" {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	// 解析talker参数，支持多个talker（以英文逗号分隔）
+	talkers := util.Str2List(talker, ",")
+	if len(talkers) == 0 {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	// 找到时间范围内的数据库文件
+	dbInfos := ds.getDBInfosForTimeRange(startTime, endTime)
+	if len(dbInfos) == 0 {
+		return 0, errors.TimeRangeNotFound(startTime, endTime)
+	}
+
+	totalCount := int64(0)
+
+	// 从每个相关数据库中查询消息数量
+	for _, dbInfo := range dbInfos {
+		// 检查上下文是否已取消
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		db, err := ds.dbm.OpenDB(dbInfo.FilePath)
+		if err != nil {
+			log.Error().Msgf("数据库 %s 未打开", dbInfo.FilePath)
+			continue
+		}
+
+		// 对每个talker进行查询
+		for _, talkerItem := range talkers {
+			// 构建表名
+			_talkerMd5Bytes := md5.Sum([]byte(talkerItem))
+			talkerMd5 := hex.EncodeToString(_talkerMd5Bytes[:])
+			tableName := "Msg_" + talkerMd5
+
+			// 检查表是否存在
+			var exists bool
+			err = db.QueryRowContext(ctx,
+				"SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+				tableName).Scan(&exists)
+
+			if err != nil {
+				if err == sql.ErrNoRows {
+					// 表不存在，继续下一个talker
+					continue
+				}
+				return 0, errors.QueryFailed("", err)
+			}
+
+			// 构建COUNT查询
+			query := fmt.Sprintf(`
+				SELECT COUNT(*) as count
+				FROM %s m
+				WHERE m.create_time >= ? AND m.create_time <= ?
+			`, tableName)
+
+			log.Debug().Msgf("Count query for table: %s", tableName)
+			log.Debug().Msgf("Time range: %d - %d", startTime.Unix(), endTime.Unix())
+
+			// 执行查询
+			var count int64
+			err = db.QueryRowContext(ctx, query, startTime.Unix(), endTime.Unix()).Scan(&count)
+			if err != nil {
+				if strings.Contains(err.Error(), "no such table") {
+					continue
+				}
+				log.Err(err).Msgf("从数据库 %s 查询消息数量失败", dbInfo.FilePath)
+				continue
+			}
+
+			totalCount += count
+			log.Debug().Msgf("Table %s count: %d, total: %d", tableName, count, totalCount)
+		}
+	}
+
+	return totalCount, nil
+}
+
 // 联系人
 func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset int) ([]*model.Contact, error) {
 	var query string

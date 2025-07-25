@@ -3,6 +3,7 @@ package darwinv3
 import (
 	"context"
 	"crypto/md5"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"regexp"
@@ -361,6 +362,78 @@ func extractTalkerFromTableName(tableName string) string {
 	}
 
 	return strings.TrimPrefix(tableName, "Chat_")
+}
+
+// GetMessagesCount 获取消息数量，用于数据同步
+func (ds *DataSource) GetMessagesCount(ctx context.Context, startTime, endTime time.Time, talker string) (int64, error) {
+	if talker == "" {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	// 解析talker参数，支持多个talker（以英文逗号分隔）
+	talkers := util.Str2List(talker, ",")
+	if len(talkers) == 0 {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	totalCount := int64(0)
+
+	// 获取消息数据库
+	db, err := ds.dbm.GetDB(Message)
+	if err != nil {
+		return 0, err
+	}
+
+	// 对每个talker进行查询
+	for _, talkerItem := range talkers {
+		// 检查上下文是否已取消
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		// 构建表名（darwinv3使用Chat_前缀）
+		tableName := "Chat_" + talkerItem
+
+		// 检查表是否存在
+		var exists bool
+		err = db.QueryRowContext(ctx,
+			"SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+			tableName).Scan(&exists)
+
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// 表不存在，继续下一个talker
+				continue
+			}
+			return 0, errors.QueryFailed("", err)
+		}
+
+		// 构建COUNT查询
+		query := fmt.Sprintf(`
+			SELECT COUNT(*) as count
+			FROM %s
+			WHERE CreateTime >= ? AND CreateTime <= ?
+		`, tableName)
+
+		log.Debug().Msgf("DarwinV3 Count query for table: %s", tableName)
+		log.Debug().Msgf("Time range: %d - %d", startTime.Unix(), endTime.Unix())
+
+		// 执行查询
+		var count int64
+		err = db.QueryRowContext(ctx, query, startTime.Unix(), endTime.Unix()).Scan(&count)
+		if err != nil {
+			if strings.Contains(err.Error(), "no such table") {
+				continue
+			}
+			log.Err(err).Msgf("从DarwinV3数据库查询消息数量失败")
+			continue
+		}
+
+		totalCount += count
+		log.Debug().Msgf("DarwinV3 Table %s count: %d, total: %d", tableName, count, totalCount)
+	}
+
+	return totalCount, nil
 }
 
 // GetContacts 实现获取联系人信息的方法

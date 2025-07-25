@@ -51,6 +51,7 @@ func (s *Service) initRouter() {
 	api := router.Group("/api/v1")
 	{
 		api.GET("/chatlog", s.GetChatlog)
+		api.GET("/chatlog/count", s.GetChatlogCount)
 		api.GET("/contact", s.GetContacts)
 		api.GET("/chatroom", s.GetChatRooms)
 		api.GET("/session", s.GetSessions)
@@ -126,6 +127,41 @@ func (s *Service) GetChatlog(c *gin.Context) {
 			c.Writer.Flush()
 		}
 	}
+}
+
+func (s *Service) GetChatlogCount(c *gin.Context) {
+	q := struct {
+		Time   string `form:"time"`
+		Talker string `form:"talker"`
+	}{}
+
+	if err := c.BindQuery(&q); err != nil {
+		errors.Err(c, err)
+		return
+	}
+
+	start, end, ok := util.TimeRangeOf(q.Time)
+	if !ok {
+		errors.Err(c, errors.InvalidArg("time"))
+		return
+	}
+
+	if q.Talker == "" {
+		errors.Err(c, errors.InvalidArg("talker"))
+		return
+	}
+
+	count, err := s.db.GetMessagesCount(start, end, q.Talker)
+	if err != nil {
+		errors.Err(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"count":  count,
+		"talker": q.Talker,
+		"time":   q.Time,
+	})
 }
 
 func (s *Service) GetContacts(c *gin.Context) {

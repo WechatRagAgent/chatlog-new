@@ -61,6 +61,11 @@ func (s *Service) GetMedia(_type string, key string) (*model.Media, error) {
 	return s.db.GetMedia(_type, key)
 }
 
+// GetMessagesCount 获取消息数量，用于数据同步
+func (s *Service) GetMessagesCount(start, end time.Time, talker string) (int64, error) {
+	return s.db.GetMessagesCount(start, end, talker)
+}
+
 // Close closes the database connection
 func (s *Service) Close() {
 	// Add cleanup code if needed

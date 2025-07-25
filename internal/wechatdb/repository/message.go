@@ -109,3 +109,12 @@ func (r *Repository) parseTalkerAndSender(ctx context.Context, talker, sender st
 
 	return talker, sender
 }
+
+// GetMessagesCount 获取消息数量，用于数据同步
+func (r *Repository) GetMessagesCount(ctx context.Context, startTime, endTime time.Time, talker string) (int64, error) {
+	// 解析talker和sender（这里只需要talker）
+	talker, _ = r.parseTalkerAndSender(ctx, talker, "")
+
+	// 调用数据源层获取消息数量
+	return r.ds.GetMessagesCount(ctx, startTime, endTime, talker)
+}
